@@ -1,0 +1,544 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) [2026] [Base 10 Assets, LLC]
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ */
+
+package org.firstinspires.ftc.teamcode;
+
+import static com.qualcomm.robotcore.hardware.DcMotor.ZeroPowerBehavior.BRAKE;
+
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.CRServo;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
+
+@TeleOp(name = "BioBuzz StarterBot Teleop", group = "BioBuzz")
+public class BioBuzzStarterbotTeleopMecanum extends OpMode {
+
+    // ============================================================
+    // DRIVE MOTORS
+    // ============================================================
+
+    private DcMotor leftFrontDrive;
+    private DcMotor leftBackDrive;
+    private DcMotor rightFrontDrive;
+    private DcMotor rightBackDrive;
+
+    // ============================================================
+    // MECHANISMS
+    // ============================================================
+
+    private DcMotorEx launcher;
+    private DcMotor intake;
+
+    private CRServo leftIntakeServo;
+    private CRServo rightIntakeServo;
+    private CRServo windmillServo;
+
+    // ============================================================
+    // LAUNCHER SETTINGS
+    // ============================================================
+
+    /*
+     * These values are in encoder ticks per second.
+     *
+     * 1250 ticks/sec = approximately 2678 RPM
+     * IF the launcher motor encoder is 28 ticks/revolution.
+     *
+     * Tune these values on the actual robot.
+     */
+    private static final double LAUNCHER_TARGET_VELOCITY = 1250.0;
+    private static final double LAUNCHER_MIN_VELOCITY = 1200.0;
+
+    /*
+     * PIDF values for the launcher.
+     *
+     * These are starting values, not guaranteed final competition values.
+     * PIDF depends on the actual launcher motor, gearing, wheel, compression,
+     * battery voltage, and mechanism.
+     */
+    private static final double LAUNCHER_P = 40.0;
+    private static final double LAUNCHER_I = 0.0;
+    private static final double LAUNCHER_D = 0.0;
+    private static final double LAUNCHER_F = 12.5;
+
+    // ============================================================
+    // DRIVE POWER VARIABLES
+    // ============================================================
+
+    private double leftFrontPower;
+    private double rightFrontPower;
+    private double leftBackPower;
+    private double rightBackPower;
+
+    private double intakePower;
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+
+    @Override
+    public void init() {
+
+        /*
+         * Hardware names MUST match the Robot Configuration exactly.
+         */
+
+        leftFrontDrive = hardwareMap.get(
+                DcMotor.class, "left_front_drive");
+
+        rightFrontDrive = hardwareMap.get(
+                DcMotor.class, "right_front_drive");
+
+        leftBackDrive = hardwareMap.get(
+                DcMotor.class, "left_back_drive");
+
+        rightBackDrive = hardwareMap.get(
+                DcMotor.class, "right_back_drive");
+
+        intake = hardwareMap.get(
+                DcMotor.class, "intake");
+
+        launcher = hardwareMap.get(
+                DcMotorEx.class, "launcher");
+
+        windmillServo = hardwareMap.get(
+                CRServo.class, "windmillServo");
+
+        leftIntakeServo = hardwareMap.get(
+                CRServo.class, "left_intake_servo");
+
+        rightIntakeServo = hardwareMap.get(
+                CRServo.class, "right_intake_servo");
+
+
+        // ========================================================
+        // DRIVE MOTOR DIRECTIONS
+        // ========================================================
+
+        /*
+         * These are based on the directions in your original code.
+         *
+         * If pushing the left stick forward makes the robot drive
+         * backward, reverse ALL FOUR drive motor directions.
+         */
+        leftFrontDrive.setDirection(DcMotorSimple.Direction.REVERSE);
+        leftBackDrive.setDirection(DcMotorSimple.Direction.REVERSE);
+
+        rightFrontDrive.setDirection(DcMotorSimple.Direction.FORWARD);
+        rightBackDrive.setDirection(DcMotorSimple.Direction.FORWARD);
+
+
+        // ========================================================
+        // ZERO POWER BEHAVIOR
+        // ========================================================
+
+        leftFrontDrive.setZeroPowerBehavior(BRAKE);
+        leftBackDrive.setZeroPowerBehavior(BRAKE);
+        rightFrontDrive.setZeroPowerBehavior(BRAKE);
+        rightBackDrive.setZeroPowerBehavior(BRAKE);
+
+        intake.setZeroPowerBehavior(BRAKE);
+        launcher.setZeroPowerBehavior(BRAKE);
+
+
+        // ========================================================
+        // LAUNCHER
+        // ========================================================
+
+        /*
+         * RUN_USING_ENCODER allows setVelocity() to control the
+         * launcher using encoder feedback.
+         */
+        launcher.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        /*
+         * Set launcher PIDF.
+         *
+         * These values are applied every time the OpMode initializes.
+         */
+        launcher.setPIDFCoefficients(
+                DcMotor.RunMode.RUN_USING_ENCODER,
+                new PIDFCoefficients(
+                        LAUNCHER_P,
+                        LAUNCHER_I,
+                        LAUNCHER_D,
+                        LAUNCHER_F
+                )
+        );
+
+
+        // ========================================================
+        // INTAKE / FEEDER DIRECTIONS
+        // ========================================================
+
+        /*
+         * Initialize all continuous rotation servos at zero.
+         */
+        leftIntakeServo.setPower(0);
+        rightIntakeServo.setPower(0);
+        windmillServo.setPower(0);
+
+        /*
+         * Your original code reversed these two.
+         * Keep these unless testing proves your mechanism needs
+         * the opposite direction.
+         */
+        rightIntakeServo.setDirection(
+                DcMotorSimple.Direction.REVERSE);
+
+        windmillServo.setDirection(
+                DcMotorSimple.Direction.REVERSE);
+
+
+        // ========================================================
+        // INITIAL TELEMETRY
+        // ========================================================
+
+        telemetry.addLine("BioBuzz TeleOp Initialized");
+        telemetry.addLine("2026-2027 BIOBUZZ");
+        telemetry.addLine("");
+        telemetry.addData("Launcher Target", "%.0f ticks/sec",
+                LAUNCHER_TARGET_VELOCITY);
+        telemetry.update();
+    }
+
+
+    // ============================================================
+    // START
+    // ============================================================
+
+    @Override
+    public void start() {
+
+        /*
+         * Make absolutely sure mechanisms start stopped.
+         */
+        launcher.setVelocity(0);
+
+        intake.setPower(0);
+
+        leftIntakeServo.setPower(0);
+        rightIntakeServo.setPower(0);
+        windmillServo.setPower(0);
+    }
+
+
+    // ============================================================
+    // MAIN LOOP
+    // ============================================================
+
+    @Override
+    public void loop() {
+
+        // ========================================================
+        // MECANUM DRIVE
+        // ========================================================
+
+        double forward = -gamepad1.left_stick_y;
+        double strafe = gamepad1.left_stick_x;
+        double rotate = gamepad1.right_stick_x;
+
+        /*
+         * Deadband helps prevent small joystick noise from causing
+         * the robot to move when the sticks are released.
+         */
+        forward = applyDeadband(forward, 0.05);
+        strafe = applyDeadband(strafe, 0.05);
+        rotate = applyDeadband(rotate, 0.05);
+
+        mecanumDrive(forward, strafe, rotate);
+
+
+        // ========================================================
+        // INTAKE CONTROL
+        // ========================================================
+
+        /*
+         * Right trigger = intake
+         * Left trigger  = reverse intake
+         */
+        intakePower =
+                gamepad1.right_trigger
+                        - gamepad1.left_trigger;
+
+
+        // ========================================================
+        // LAUNCHER
+        // ========================================================
+
+        launch();
+
+
+        // ========================================================
+        // APPLY INTAKE POWER
+        // ========================================================
+
+        intake.setPower(intakePower);
+
+        leftIntakeServo.setPower(intakePower);
+        rightIntakeServo.setPower(intakePower);
+
+
+        // ========================================================
+        // TELEMETRY
+        // ========================================================
+
+        double launcherVelocity = launcher.getVelocity();
+
+        telemetry.addData(
+                "Drive",
+                "LF %.2f | RF %.2f",
+                leftFrontPower,
+                rightFrontPower
+        );
+
+        telemetry.addData(
+                "Drive Back",
+                "LB %.2f | RB %.2f",
+                leftBackPower,
+                rightBackPower
+        );
+
+        telemetry.addData(
+                "Intake",
+                "%.2f",
+                intakePower
+        );
+
+        telemetry.addData(
+                "Launcher Target",
+                "%.0f ticks/sec",
+                gamepad1.right_bumper
+                        ? LAUNCHER_TARGET_VELOCITY
+                        : 0.0
+        );
+
+        telemetry.addData(
+                "Launcher Actual",
+                "%.0f ticks/sec",
+                launcherVelocity
+        );
+
+        telemetry.addData(
+                "Launcher RPM",
+                "%.0f",
+                ticksPerSecondToRPM(launcherVelocity)
+        );
+
+        telemetry.addData(
+                "Launcher Ready",
+                launcherVelocity >= LAUNCHER_MIN_VELOCITY
+                        ? "YES"
+                        : "NO"
+        );
+
+        telemetry.update();
+    }
+
+
+    // ============================================================
+    // MECANUM DRIVE
+    // ============================================================
+
+    private void mecanumDrive(
+            double forward,
+            double strafe,
+            double rotate) {
+
+        /*
+         * Standard mecanum wheel equations.
+         */
+        leftFrontPower =
+                forward + strafe + rotate;
+
+        rightFrontPower =
+                forward - strafe - rotate;
+
+        leftBackPower =
+                forward - strafe + rotate;
+
+        rightBackPower =
+                forward + strafe - rotate;
+
+
+        /*
+         * Find the largest absolute motor command.
+         */
+        double maxPower = Math.max(
+                Math.abs(leftFrontPower),
+                Math.abs(rightFrontPower)
+        );
+
+        maxPower = Math.max(
+                maxPower,
+                Math.abs(leftBackPower)
+        );
+
+        maxPower = Math.max(
+                maxPower,
+                Math.abs(rightBackPower)
+        );
+
+
+        /*
+         * Scale all motors together if any command exceeds 1.
+         *
+         * This preserves the requested direction while keeping
+         * every motor within [-1, 1].
+         */
+        if (maxPower > 1.0) {
+
+            leftFrontPower /= maxPower;
+            rightFrontPower /= maxPower;
+            leftBackPower /= maxPower;
+            rightBackPower /= maxPower;
+        }
+
+
+        // Send power to motors.
+        leftFrontDrive.setPower(leftFrontPower);
+        rightFrontDrive.setPower(rightFrontPower);
+        leftBackDrive.setPower(leftBackPower);
+        rightBackDrive.setPower(rightBackPower);
+    }
+
+
+    // ============================================================
+    // LAUNCHER
+    // ============================================================
+
+    private void launch() {
+
+        /*
+         * RIGHT BUMPER:
+         *
+         * Hold bumper:
+         *     Launcher spins to target velocity.
+         *
+         * Release bumper:
+         *     Launcher stops.
+         */
+        if (gamepad1.right_bumper) {
+
+            launcher.setVelocity(
+                    LAUNCHER_TARGET_VELOCITY);
+
+        } else {
+
+            launcher.setVelocity(0);
+        }
+
+
+        /*
+         * Only feed when:
+         *
+         * 1. The driver is holding the launcher button.
+         * 2. The launcher has actually reached shooting speed.
+         */
+        if (gamepad1.right_bumper
+                && launcher.getVelocity()
+                >= LAUNCHER_MIN_VELOCITY) {
+
+            /*
+             * Run windmill feeder.
+             */
+            windmillServo.setPower(1.0);
+
+            /*
+             * Give the intake a little extra power while shooting.
+             *
+             * Clamp to 1.0 so we never send an invalid motor command.
+             */
+            intakePower = Math.min(
+                    1.0,
+                    intakePower + 0.5
+            );
+
+        } else {
+
+            /*
+             * Launcher isn't ready or isn't being requested.
+             */
+            windmillServo.setPower(0);
+        }
+    }
+
+
+    // ============================================================
+    // DEAD BAND
+    // ============================================================
+
+    private double applyDeadband(
+            double value,
+            double deadband) {
+
+        if (Math.abs(value) < deadband) {
+            return 0.0;
+        }
+
+        return value;
+    }
+
+
+    // ============================================================
+    // RPM CONVERSION
+    // ============================================================
+
+    private double ticksPerSecondToRPM(
+            double ticksPerSecond) {
+
+        /*
+         * Assumes a 28 CPR encoder.
+         *
+         * RPM =
+         * ticks/sec / ticks/revolution * 60
+         */
+        return (ticksPerSecond / 28.0) * 60.0;
+    }
+
+
+    // ============================================================
+    // STOP
+    // ============================================================
+
+    @Override
+    public void stop() {
+
+        /*
+         * Explicitly stop EVERYTHING.
+         *
+         * This is important for safety and prevents mechanisms
+         * from continuing to run after the OpMode is stopped.
+         */
+
+        leftFrontDrive.setPower(0);
+        rightFrontDrive.setPower(0);
+        leftBackDrive.setPower(0);
+        rightBackDrive.setPower(0);
+
+        intake.setPower(0);
+
+        launcher.setVelocity(0);
+
+        leftIntakeServo.setPower(0);
+        rightIntakeServo.setPower(0);
+        windmillServo.setPower(0);
